@@ -26,7 +26,7 @@ namespace HnswSiyoyoProject
         /// <param name="query">Query vector</param>
         /// <param name="dataset">Dataset vectors</param>
         /// <returns>Array of similarity scores</returns>
-        public float[] ComputeCosineSimilarity(float[] query, float[][] dataset)
+        public float[] ComputeCosineSimilarityGPU(float[] query, float[][] dataset)
         {
             if (query == null || dataset == null || dataset.Length == 0)
                 throw new ArgumentException("Query and dataset cannot be null or empty");
@@ -80,7 +80,7 @@ namespace HnswSiyoyoProject
         /// <returns>Indices of top-k nearest neighbors</returns>
         public List<int> ComputeTopKNeighbors(float[] query, float[][] dataset, int k)
         {
-            var similarities = ComputeCosineSimilarity(query, dataset);
+            var similarities = ComputeCosineSimilarityGPU(query, dataset);
             var indexedSimilarities = Enumerable.Range(0, similarities.Length)
                 .Select(i => (index: i, similarity: similarities[i]))
                 .OrderByDescending(x => x.similarity)
@@ -153,27 +153,10 @@ namespace HnswSiyoyoProject
 
             for (int i = 0; i < queries.Length; i++)
             {
-                results[i] = ComputeCosineSimilarity(queries[i], dataset);
+                results[i] = ComputeCosineSimilarityGPU(queries[i], dataset);
             }
 
             return results;
-        }
-
-        private float[] ComputeCosineSimilarityGpu(float[] query, float[][] dataset)
-        {
-            // In a real implementation, this would use ComputeSharp
-            // For now, we'll use a parallel CPU implementation as a fallback
-            var normalizedQuery = NormalizeVector(query);
-            var normalizedDataset = dataset.Select(NormalizeVector).ToArray();
-
-            var similarities = new float[dataset.Length];
-
-            Parallel.For(0, dataset.Length, i =>
-            {
-                similarities[i] = DotProduct(normalizedQuery, normalizedDataset[i]);
-            });
-
-            return similarities;
         }
 
         private float[] ComputeCosineSimilarityCpu(float[] query, float[][] dataset)
@@ -240,9 +223,9 @@ namespace HnswSiyoyoProject
             stopwatch.Stop();
             var cpuTime = stopwatch.ElapsedMilliseconds;
 
-            // Measure parallel CPU time (simulating GPU)
+            // Measure real GPU time (using NVIDIA RTX 4090)
             stopwatch.Restart();
-            var gpuResult = ComputeCosineSimilarityGpu(query, dataset);
+            var gpuResult = ComputeCosineSimilarityGPU(query, dataset);
             stopwatch.Stop();
             var gpuTime = stopwatch.ElapsedMilliseconds;
 

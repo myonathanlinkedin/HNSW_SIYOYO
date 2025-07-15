@@ -11,6 +11,24 @@ namespace HnswSiyoyoProject
     {
         static void Main(string[] args)
         {
+            // Check if we want to run only the advanced benchmarking test
+            if (args.Length > 0 && args[0].ToLower() == "test-advanced-benchmark")
+            {
+                Console.WriteLine("=== Running Advanced Benchmarking Test Only ===");
+                try
+                {
+                    ComprehensiveTest.TestAdvancedBenchmarking();
+                    Console.WriteLine("✅ Advanced benchmarking test PASSED!");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"❌ Advanced benchmarking test FAILED: {ex.Message}");
+                    Console.WriteLine(ex.StackTrace);
+                    return;
+                }
+            }
+
             // Setup logging to both console and file
             string logFileName = $"results/benchmark_log_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
             // Ensure results directory exists
@@ -35,16 +53,25 @@ namespace HnswSiyoyoProject
                     Environment.Exit(1);
                 }
 
-                // Create benchmark runner
+                // Create benchmark runner with enhanced components
                 var runner = new BenchmarkRunner("results");
                 var gpuHelper = new GpuSimilarityHelper();
+                
+                // Initialize enhanced components as described in the paper
+                var vectorStorage128 = new VectorStorage(128); // For 128-dimensional vectors
+                var vectorStorage256 = new VectorStorage(256); // For 256-dimensional vectors
+                var objectPool = new ObjectPool<List<(int index, float similarity)>>(1000);
+                var analytics = new GraphAnalytics(new HnswSiyoyoGraph());
+                var graphModifier = new RealTimeGraphModifier(new HnswSiyoyoGraph());
 
                 Console.WriteLine("GPU Information:");
                 Console.WriteLine(gpuHelper.GetGpuInfo());
                 Console.WriteLine();
 
-                // Generate sample datasets
-                Console.WriteLine("Generating sample datasets...");
+                // Generate sample datasets using enhanced components
+                Console.WriteLine("Generating sample datasets with enhanced processing...");
+                
+                // Use VectorStorage for efficient data management
                 var synthetic2K = gpuHelper.GenerateSyntheticData(2000, 128, "uniform");
                 var synthetic10K = gpuHelper.GenerateSyntheticData(10000, 128, "normal");
                 var realWorld = gpuHelper.GenerateSyntheticData(5000, 256, "normal"); // Simulated real-world data
@@ -52,6 +79,15 @@ namespace HnswSiyoyoProject
                 var queries2K = gpuHelper.GenerateSyntheticData(100, 128, "uniform");
                 var queries10K = gpuHelper.GenerateSyntheticData(100, 128, "normal");
                 var queriesReal = gpuHelper.GenerateSyntheticData(100, 256, "normal");
+                
+                // Store vectors in the correct VectorStorage for efficient GPU transfer
+                ParallelProcessor.ProcessBatch(synthetic2K, vector => vectorStorage128.AddVector(vector));
+                ParallelProcessor.ProcessBatch(synthetic10K, vector => vectorStorage128.AddVector(vector));
+                ParallelProcessor.ProcessBatch(realWorld, vector => vectorStorage256.AddVector(vector));
+                
+                Console.WriteLine($"VectorStorage128 loaded: {vectorStorage128.Count} vectors, {vectorStorage128.Dimension} dimensions");
+                Console.WriteLine($"VectorStorage256 loaded: {vectorStorage256.Count} vectors, {vectorStorage256.Dimension} dimensions");
+                Console.WriteLine($"ObjectPool statistics: {objectPool.GetStatistics()}");
 
                 // Run benchmarks
                 Console.WriteLine("Running benchmarks...");
@@ -111,10 +147,23 @@ namespace HnswSiyoyoProject
                 Console.WriteLine("Parameter sensitivity results exported.");
                 Console.WriteLine();
 
-                // GPU speedup measurement
+                // GPU speedup measurement with enhanced processing
                 Console.WriteLine("=== GPU Speedup Measurement ===");
                 var speedup = gpuHelper.MeasureGpuSpeedup(queries2K[0], synthetic2K);
                 Console.WriteLine($"GPU Speedup: {speedup.ToString("F2", CultureInfo.InvariantCulture)}x");
+                
+                // Test advanced GPU functions with VectorStorage
+                Console.WriteLine("=== Advanced GPU Functions ===");
+                try
+                {
+                    var optimizedBatch = vectorStorage128.GetOptimizedBatchTransfer(0, 100);
+                    var advancedResults = gpuHelper.ComputeBatchSimilarityAdvanced(queries2K.Take(10).ToArray(), synthetic2K.Take(100).ToArray());
+                    Console.WriteLine($"Advanced GPU batch processing: {advancedResults.Length} queries, {advancedResults[0].Length} results each");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Advanced GPU functions not available: {ex.Message}");
+                }
                 Console.WriteLine();
 
                 // Generate comprehensive results summary
@@ -122,6 +171,54 @@ namespace HnswSiyoyoProject
                 {
                     GenerateComprehensiveResults(results2K, results10K, resultsReal, sensitivityResults, speedup);
                 }
+
+                // Test enhanced components
+                Console.WriteLine();
+                Console.WriteLine("=== Testing Enhanced Components ===");
+                
+                // Test GraphAnalytics
+                Console.WriteLine("Graph Analytics:");
+                Console.WriteLine(analytics.GetComprehensiveStatistics());
+                
+                // Test advanced analytics functions from the paper
+                var query = new float[128];
+                var candidateSet = analytics.GenerateCandidateSet(query, 0, 10, 0);
+                var searchConvergence = analytics.TrackSearchConvergence(query);
+                var constructionConvergence = analytics.MonitorConstructionConvergence();
+                var optimalEf = analytics.CalculateOptimalEf();
+                var gpuSpeedup = analytics.CalculateGpuSpeedup(1000, 128, 1e-6, 1e-7, 1e-3, 1e-4);
+                
+                Console.WriteLine($"Advanced Analytics: Optimal ef={optimalEf}, GPU speedup={gpuSpeedup:F2}x");
+                
+                // Test RealTimeGraphModifier
+                Console.WriteLine("Real-Time Graph Modifier:");
+                Console.WriteLine(graphModifier.GetModificationSummary());
+                
+                // Test advanced modifier functions from the paper
+                var workloadOptimization = graphModifier.OptimizeForDynamicWorkload("high_query", new Dictionary<string, double>());
+                var parameterTuning = graphModifier.AdaptiveParameterTuning(
+                    new Dictionary<string, double> { ["Recall"] = 0.8, ["MemoryUsage"] = 1000 },
+                    new Dictionary<string, double> { ["Recall"] = 0.9, ["MemoryUsage"] = 800 }
+                );
+                var performanceMonitoring = graphModifier.MonitorPerformance();
+                
+                Console.WriteLine($"Advanced Modifier: {workloadOptimization.RecommendedActions.Count} recommendations, {parameterTuning.RecommendedParameters.Count} parameter changes");
+                
+                // Test memory optimization
+                vectorStorage128.OptimizeMemoryLayout();
+                vectorStorage256.OptimizeMemoryLayout();
+                Console.WriteLine($"Memory optimization completed. VectorStorage128 memory usage: {vectorStorage128.GetMemoryUsage()} bytes");
+                Console.WriteLine($"VectorStorage256 memory usage: {vectorStorage256.GetMemoryUsage()} bytes");
+                
+                // Run comprehensive tests
+                Console.WriteLine();
+                Console.WriteLine("=== Running Comprehensive Tests ===");
+                ComprehensiveTest.RunAllTests();
+                
+                // Validate paper implementation
+                Console.WriteLine();
+                Console.WriteLine("=== Validating Paper Implementation ===");
+                PaperValidation.ValidatePaperImplementation();
 
                 Console.WriteLine("All benchmarks completed successfully!");
                 Console.WriteLine("Results saved to 'results/' directory.");

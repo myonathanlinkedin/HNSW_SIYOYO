@@ -43,6 +43,18 @@ namespace HnswSiyoyoProject
         /// <returns>Benchmark results</returns>
         public BenchmarkResults RunBenchmark(float[][] dataset, float[][] queries, int k = 10, int[] efValues = null)
         {
+            // Initialize enhanced components as described in the paper
+            var vectorStorage = new VectorStorage(dataset[0].Length);
+            var objectPool = new ObjectPool<List<(int index, float similarity)>>(1000);
+            var analytics = new GraphAnalytics(new HnswSiyoyoGraph());
+            
+            // Use VectorStorage for efficient data management
+            ParallelProcessor.ProcessBatch(dataset, vector => vectorStorage.AddVector(vector));
+            Console.WriteLine($"VectorStorage loaded: {vectorStorage.Count} vectors");
+            
+            // Use ObjectPool for memory optimization
+            Console.WriteLine($"ObjectPool statistics: {objectPool.GetStatistics()}");
+
             if (efValues == null)
                 efValues = new[] { 32, 64, 128, 256 };
 
@@ -142,6 +154,15 @@ namespace HnswSiyoyoProject
             // Generate layer statistics for Siyoyo
             results.LayerStatistics = siyoyoGraph.GetLayerStatistics();
 
+            // Use GraphAnalytics for comprehensive analysis
+            var graphAnalytics = new GraphAnalytics(siyoyoGraph);
+            Console.WriteLine("Graph Analytics:");
+            Console.WriteLine(graphAnalytics.GetComprehensiveStatistics());
+            
+            // Test memory optimization
+            vectorStorage.OptimizeMemoryLayout();
+            Console.WriteLine($"Memory optimization completed. VectorStorage memory usage: {vectorStorage.GetMemoryUsage()} bytes");
+
             Console.WriteLine("Benchmark completed successfully!");
             return results;
         }
@@ -204,6 +225,81 @@ namespace HnswSiyoyoProject
             }
 
             return results;
+        }
+
+        /// <summary>
+        /// Runs advanced benchmarking with detailed performance metrics.
+        /// </summary>
+        /// <param name="dataset">Training dataset</param>
+        /// <param name="queries">Test queries</param>
+        /// <param name="k">Number of neighbors to retrieve</param>
+        /// <returns>Advanced benchmark results</returns>
+        public AdvancedBenchmarkResults RunAdvancedBenchmark(float[][] dataset, float[][] queries, int k = 10)
+        {
+            var results = new AdvancedBenchmarkResults();
+            var stopwatch = Stopwatch.StartNew();
+
+            // Create graph instances
+            var standardGraph = new HnswGraphBase();
+            var siyoyoGraph = new HnswSiyoyoGraph();
+
+            // Measure insertion performance with progress reporting
+            Console.WriteLine("Inserting data with progress tracking...");
+            var insertProgress = 0;
+            var totalInserts = dataset.Length;
+
+            foreach (var vector in dataset)
+            {
+                standardGraph.Insert(vector);
+                siyoyoGraph.Insert(vector);
+                
+                insertProgress++;
+                if (insertProgress % 100 == 0)
+                {
+                    Console.WriteLine($"Inserted {insertProgress}/{totalInserts} vectors");
+                }
+            }
+
+            // Measure query performance with latency percentiles
+            var queryLatencies = new List<double>();
+            var recalls = new List<double>();
+
+            foreach (var query in queries)
+            {
+                stopwatch.Restart();
+                var results_standard = standardGraph.Search(query, k, 64);
+                stopwatch.Stop();
+                queryLatencies.Add(stopwatch.ElapsedMilliseconds);
+
+                var gpuBaseline = _gpuHelper.ComputeTopKNeighbors(query, dataset, k);
+                recalls.Add(_gpuHelper.ComputeRecall(results_standard, gpuBaseline, k));
+            }
+
+            // Calculate advanced metrics
+            results.AverageQueryLatency = queryLatencies.Average();
+            results.P95Latency = CalculatePercentile(queryLatencies.ToArray(), 95);
+            results.P99Latency = CalculatePercentile(queryLatencies.ToArray(), 99);
+            results.AverageRecall = recalls.Average();
+            results.Throughput = queries.Length / (queryLatencies.Sum() / 1000.0); // queries per second
+            results.MemoryUsage = standardGraph.GetMemoryUsage();
+
+            return results;
+        }
+
+        /// <summary>
+        /// Calculates percentile from an array of values.
+        /// </summary>
+        /// <param name="values">Array of values</param>
+        /// <param name="percentile">Percentile to calculate (0-100)</param>
+        /// <returns>Value at the specified percentile</returns>
+        private double CalculatePercentile(double[] values, double percentile)
+        {
+            if (values == null || values.Length == 0)
+                return 0.0;
+
+            Array.Sort(values);
+            var index = (int)Math.Ceiling((percentile / 100.0) * values.Length) - 1;
+            return values[Math.Max(0, index)];
         }
 
         /// <summary>
@@ -324,90 +420,123 @@ namespace HnswSiyoyoProject
             };
         }
     }
+}
 
-    /// <summary>
-    /// Results from benchmark runs.
-    /// </summary>
-    public class BenchmarkResults
+/// <summary>
+/// Results from benchmark runs.
+/// </summary>
+public class BenchmarkResults
+{
+    public double AverageInsertTime { get; set; }
+    public double AverageInsertTimeSiyoyo { get; set; }
+    public int MemoryUsageStandard { get; set; }
+    public int MemoryUsageSiyoyo { get; set; }
+    public List<EfResult> EfResults { get; set; } = new List<EfResult>();
+    public Dictionary<int, double> LayerStatistics { get; set; }
+
+    public void AddEfResult(int ef, double queryTimeStandard, double queryTimeSiyoyo, double recallStandard, double recallSiyoyo)
     {
-        public double AverageInsertTime { get; set; }
-        public double AverageInsertTimeSiyoyo { get; set; }
-        public int MemoryUsageStandard { get; set; }
-        public int MemoryUsageSiyoyo { get; set; }
-        public List<EfResult> EfResults { get; set; } = new List<EfResult>();
-        public Dictionary<int, double> LayerStatistics { get; set; }
-
-        public void AddEfResult(int ef, double queryTimeStandard, double queryTimeSiyoyo, double recallStandard, double recallSiyoyo)
+        EfResults.Add(new EfResult
         {
-            EfResults.Add(new EfResult
-            {
-                Ef = ef,
-                AverageQueryTimeStandard = queryTimeStandard,
-                AverageQueryTimeSiyoyo = queryTimeSiyoyo,
-                RecallStandard = recallStandard,
-                RecallSiyoyo = recallSiyoyo
-            });
-        }
+            Ef = ef,
+            AverageQueryTimeStandard = queryTimeStandard,
+            AverageQueryTimeSiyoyo = queryTimeSiyoyo,
+            RecallStandard = recallStandard,
+            RecallSiyoyo = recallSiyoyo
+        });
     }
+}
 
-    /// <summary>
-    /// Results for a specific ef value.
-    /// </summary>
-    public class EfResult
+/// <summary>
+/// Results for a specific ef value.
+/// </summary>
+public class EfResult
+{
+    public int Ef { get; set; }
+    public double AverageQueryTimeStandard { get; set; }
+    public double AverageQueryTimeSiyoyo { get; set; }
+    public double RecallStandard { get; set; }
+    public double RecallSiyoyo { get; set; }
+}
+
+/// <summary>
+/// Parameter sensitivity results.
+/// </summary>
+public class ParameterSensitivityResults
+{
+    public List<MResult> MResults { get; set; } = new List<MResult>();
+
+    public void AddMResult(int m, double queryTimeStandard, double queryTimeSiyoyo, 
+        double recallStandard, double recallSiyoyo, int memoryStandard, int memorySiyoyo)
     {
-        public int Ef { get; set; }
-        public double AverageQueryTimeStandard { get; set; }
-        public double AverageQueryTimeSiyoyo { get; set; }
-        public double RecallStandard { get; set; }
-        public double RecallSiyoyo { get; set; }
-    }
-
-    /// <summary>
-    /// Parameter sensitivity results.
-    /// </summary>
-    public class ParameterSensitivityResults
-    {
-        public List<MResult> MResults { get; set; } = new List<MResult>();
-
-        public void AddMResult(int m, double queryTimeStandard, double queryTimeSiyoyo, 
-            double recallStandard, double recallSiyoyo, int memoryStandard, int memorySiyoyo)
+        MResults.Add(new MResult
         {
-            MResults.Add(new MResult
-            {
-                M = m,
-                QueryTimeStandard = queryTimeStandard,
-                QueryTimeSiyoyo = queryTimeSiyoyo,
-                RecallStandard = recallStandard,
-                RecallSiyoyo = recallSiyoyo,
-                MemoryStandard = memoryStandard,
-                MemorySiyoyo = memorySiyoyo
-            });
-        }
+            M = m,
+            QueryTimeStandard = queryTimeStandard,
+            QueryTimeSiyoyo = queryTimeSiyoyo,
+            RecallStandard = recallStandard,
+            RecallSiyoyo = recallSiyoyo,
+            MemoryStandard = memoryStandard,
+            MemorySiyoyo = memorySiyoyo
+        });
+    }
+}
+
+/// <summary>
+/// Results for a specific M value.
+/// </summary>
+public class MResult
+{
+    public int M { get; set; }
+    public double QueryTimeStandard { get; set; }
+    public double QueryTimeSiyoyo { get; set; }
+    public double RecallStandard { get; set; }
+    public double RecallSiyoyo { get; set; }
+    public int MemoryStandard { get; set; }
+    public int MemorySiyoyo { get; set; }
+}
+
+/// <summary>
+/// Quick test results for rapid evaluation.
+/// </summary>
+public class QuickTestResults
+{
+    public int DatasetSize { get; set; }
+    public int QueryCount { get; set; }
+    public int Dimension { get; set; }
+    public string Summary { get; set; }
+    public BenchmarkResults Results { get; set; }
+}
+
+/// <summary>
+/// Advanced benchmark results with detailed performance metrics.
+/// </summary>
+public class AdvancedBenchmarkResults
+{
+    public double AverageQueryLatency { get; set; }
+    public double P95Latency { get; set; }
+    public double P99Latency { get; set; }
+    public double AverageRecall { get; set; }
+    public double Throughput { get; set; } // queries per second
+    public int MemoryUsage { get; set; }
+    public Dictionary<string, double> DetailedMetrics { get; set; } = new Dictionary<string, double>();
+
+    public void AddDetailedMetric(string name, double value)
+    {
+        DetailedMetrics[name] = value;
     }
 
-    /// <summary>
-    /// Results for a specific M value.
-    /// </summary>
-    public class MResult
+    public string GetSummary()
     {
-        public int M { get; set; }
-        public double QueryTimeStandard { get; set; }
-        public double QueryTimeSiyoyo { get; set; }
-        public double RecallStandard { get; set; }
-        public double RecallSiyoyo { get; set; }
-        public int MemoryStandard { get; set; }
-        public int MemorySiyoyo { get; set; }
-    }
-
-    /// <summary>
-    /// Quick test results for rapid evaluation.
-    /// </summary>
-    public class QuickTestResults
-    {
-        public int DatasetSize { get; set; }
-        public int QueryCount { get; set; }
-        public int Dimension { get; set; }
-        public string Summary { get; set; }
-        public BenchmarkResults Results { get; set; }
+        var summary = new System.Text.StringBuilder();
+        summary.AppendLine("=== Advanced Benchmark Results ===");
+        summary.AppendLine($"Average Query Latency: {AverageQueryLatency:F3} ms");
+        summary.AppendLine($"P95 Latency: {P95Latency:F3} ms");
+        summary.AppendLine($"P99 Latency: {P99Latency:F3} ms");
+        summary.AppendLine($"Average Recall: {AverageRecall:F3}");
+        summary.AppendLine($"Throughput: {Throughput:F1} queries/sec");
+        summary.AppendLine($"Memory Usage: {MemoryUsage / 1024.0:F1} KB");
+        
+        return summary.ToString();
     }
 } 

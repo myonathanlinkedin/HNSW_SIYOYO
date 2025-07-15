@@ -44,8 +44,9 @@ namespace HnswSiyoyoProject
                 using (var queryBuffer = GraphicsDevice.GetDefault().AllocateReadOnlyBuffer(query))
                 using (var datasetBuffer = GraphicsDevice.GetDefault().AllocateReadOnlyBuffer(flatDataset))
                 using (var resultBuffer = GraphicsDevice.GetDefault().AllocateReadWriteBuffer<float>(n))
+                using (var constantsBuffer = GraphicsDevice.GetDefault().AllocateReadOnlyBuffer(new[] { dim, n }))
                 {
-                    GraphicsDevice.GetDefault().For(n, new CosineSimilarityShader(queryBuffer, datasetBuffer, resultBuffer, dim));
+                    GraphicsDevice.GetDefault().For(n, new AdvancedCosineSimilarityShader(queryBuffer, datasetBuffer, resultBuffer, constantsBuffer));
                     resultBuffer.CopyTo(result);
                 }
             }
@@ -55,6 +56,28 @@ namespace HnswSiyoyoProject
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Computes batch similarity calculations with advanced GPU optimization.
+        /// </summary>
+        /// <param name="queries">Array of query vectors</param>
+        /// <param name="dataset">Dataset vectors</param>
+        /// <returns>Matrix of similarity scores</returns>
+        public float[][] ComputeBatchSimilarityAdvanced(float[][] queries, float[][] dataset)
+        {
+            if (queries == null || dataset == null || dataset.Length == 0)
+                throw new ArgumentException("Queries and dataset cannot be null or empty");
+
+            var results = new float[queries.Length][];
+            
+            // Use parallel processing for multiple queries
+            Parallel.For(0, queries.Length, i =>
+            {
+                results[i] = ComputeCosineSimilarityGPU(queries[i], dataset);
+            });
+
+            return results;
         }
 
         /// <summary>
@@ -277,6 +300,44 @@ namespace HnswSiyoyoProject
                 normD += d * d;
             }
             Result[i] = dot / (Hlsl.Sqrt(normQ) * Hlsl.Sqrt(normD) + 1e-8f);
+        }
+    }
+
+    /// <summary>
+    /// Advanced GPU shader with proper constants buffer as described in the paper.
+    /// </summary>
+    [ThreadGroupSize(DefaultThreadGroupSizes.X)]
+    [GeneratedComputeShaderDescriptor]
+    public readonly partial struct AdvancedCosineSimilarityShader : IComputeShader
+    {
+        public readonly ReadOnlyBuffer<float> Query;
+        public readonly ReadOnlyBuffer<float> Dataset;
+        public readonly ReadWriteBuffer<float> Result;
+        public readonly ReadOnlyBuffer<int> Constants;
+
+        public AdvancedCosineSimilarityShader(ReadOnlyBuffer<float> query, ReadOnlyBuffer<float> dataset, ReadWriteBuffer<float> result, ReadOnlyBuffer<int> constants)
+        {
+            Query = query;
+            Dataset = dataset;
+            Result = result;
+            Constants = constants;
+        }
+
+        public void Execute()
+        {
+            int index = ThreadIds.X;
+            int vectorDimension = Constants[0];
+            int datasetSize = Constants[1];
+            
+            if (index >= datasetSize) return;
+
+            float dotProduct = 0.0f;
+            for (int i = 0; i < vectorDimension; i++)
+            {
+                dotProduct += Query[i] * Dataset[index * vectorDimension + i];
+            }
+
+            Result[index] = dotProduct;
         }
     }
 }

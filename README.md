@@ -170,7 +170,7 @@ If you use this implementation in your research, please cite:
   title = {HNSW Siyoyo: Empirical ANN Graph Comparison in .NET 9 with GPU Support},
   author = {Yonathan, Mateus},
   journal = {Open Access Preprint},
-  year = {2024}
+  year = {2025}
 }
 ```
 

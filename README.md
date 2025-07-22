@@ -170,7 +170,7 @@ If you use this implementation in your research, please cite:
   title = {Hierarchical Navigable Small World Siyoyo: Empirical Approximate Nearest Neighbor Graph Comparison in .NET 9 with GPU Support},
   author = {Yonathan, Mateus},
   journal = {Open Access Preprint},
-  year = {2024}
+  year = {2025}
 }
 
 ```

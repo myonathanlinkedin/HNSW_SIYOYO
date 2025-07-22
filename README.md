@@ -167,11 +167,12 @@ If you use this implementation in your research, please cite:
 
 ```
 @article{yonathan2024hnsw,
-  title = {HNSW Siyoyo: Empirical ANN Graph Comparison in .NET 9 with GPU Support},
+  title = {Hierarchical Navigable Small World Siyoyo: Empirical Approximate Nearest Neighbor Graph Comparison in .NET 9 with GPU Support},
   author = {Yonathan, Mateus},
   journal = {Open Access Preprint},
-  year = {2025}
+  year = {2024}
 }
+
 ```
 
 ## License
